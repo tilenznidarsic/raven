@@ -1,43 +1,57 @@
 # Architecture
 
-# Drone Platform — Microservice Architecture
+# Drone Platform — Architecture
 
-Split by data ownership and update cadence, not by CRUD entity. The real-time layer is stateful and connection-heavy; domain services are normal request/response; the platform layer cuts across everything.
+Two-layer split, not a sprawl of microservices: a single **backend** owns CRUD and business logic, and a **live data layer** owns real-time device communication and streaming. The two talk over pub/sub, not direct calls, so the connection-heavy real-time work can scale and deploy independently of ordinary request/response traffic.
 
-## Real-time layer
+## Backend
 
-Stateful, connection-oriented, scales on concurrent connections rather than request volume. Deserves its own tech stack and deploy cycle.
-
-- **Telemetry gateway** — owns websocket/MQTT connections to each drone. Handles command ack/nack, backpressure, reconnection. This is the bidirectional command/telemetry service.
-- **Live air traffic** — read-side aggregator. Subscribes to the gateway's telemetry stream via pub/sub (not direct calls) and serves the fused fleet-position view to the UI. Kept separate from the gateway because fan-out to many map-watching clients scales differently than fan-in from many drones.
-- **Video streaming** — separate protocol (WebRTC/RTSP vs websockets) and separate bandwidth profile from telemetry.
-
-## Domain services
-
-Normal CRUD / business-rule services. Scale horizontally without much fuss.
+One deployable, modular internally by domain. Normal request/response, scales horizontally without much fuss, persists to PostgreSQL via Prisma.
 
 - **Mission planning** — waypoints, routes, mission templates.
-- **Fleet registry** — drone inventory, hardware/firmware metadata, maintenance status. The "nouns" service other services reference by ID.
-- **Airspace rules** — geofences, no-fly zones, possibly integration with external UTM/regulatory systems (e.g. FAA LAANC). Isolated because rule logic changes on its own cadence and may need audit trails.
-- **Alerts** — battery thresholds, geofence breaches, lost-link events. Consumes the telemetry stream (via subscription, not direct dependency) and fans out to notification channels.
-- **Simulation** — generates realistic flight telemetry from mission plans. Connects to the telemetry gateway as a virtual drone client using the same protocol real drones use, so all downstream services (air traffic, alerting, history) get exercised identically for real and simulated flights. See open questions below.
-
-## Platform layer
-
-Cross-cutting, used by everything above.
-
+- **Fleet registry** — drone inventory, hardware/firmware metadata, maintenance status. The "nouns" other domains reference by ID.
+- **Airspace rules** — geofences, no-fly zones, possibly integration with external UTM/regulatory systems (e.g. FAA LAANC). Change on their own cadence and may need audit trails.
+- **Alert rules** — battery thresholds, geofence-breach and lost-link definitions. The backend owns the *rules*; the live data layer evaluates them against live telemetry and raises the events.
 - **Identity & access** — users, orgs, RBAC (who can fly which drone, who can only view).
-- **Flight history & analytics** — durable, queryable store of past telemetry/commands for playback, compliance, reporting. Deliberately separate from the live telemetry gateway: one optimizes for "last N seconds, low latency," the other for "months of time-series data, query-friendly."
+- **Flight history & analytics** — durable, queryable store of past telemetry/commands/alerts for playback, compliance, reporting.
+- **Command audit trail** — immutable log of who issued which command and when, built from command events the live data layer publishes.
+- **Simulation scenarios** — CRUD for saved scenarios/templates. Actually *running* a sim is live-data-layer work (see below).
 
-## Cross-cutting decisions to make early
+## Live data layer
 
-- **API gateway / BFF** in front of everything, so the web client isn't juggling direct connections to every service.
-- **Command audit trail** — immutable log of who issued which command and when. Can live inside the gateway or as its own append-only service; retrofitting this later is painful.
+Stateful, connection-oriented, scales on concurrent connections rather than request volume. This is where "real-time comms" lives.
 
-## Simulation service — open questions
+- **Telemetry gateway** — owns websocket/MQTT connections to each drone. Handles command send/ack/nack, backpressure, reconnection. The bidirectional command/telemetry service.
+- **Live air traffic** — read-side aggregator. Subscribes to the gateway's telemetry stream via pub/sub (not direct calls) and serves the fused fleet-position view to the UI.
+- **Video streaming** — separate protocol (WebRTC/RTSP vs websockets) and separate bandwidth profile from telemetry.
+- **Real-time alert evaluation** — consumes the telemetry stream, evaluates it against the alert rules the backend owns, and pushes live alert events to subscribed clients (and to the backend, for durable logging).
+- **Simulation execution** — runs simulated drones as virtual clients of the telemetry gateway, using the same protocol as real drones, so every downstream consumer (air traffic, alerts, history) treats sim and real flights identically. Loads scenario definitions from the backend; owns time control (pause/rewind/fast-forward) since real drone connections never need it.
 
-- **Identity tagging** — fleet registry needs a "simulated drone" flag so air traffic, alerts, and history can distinguish sim flights from real ones (filter in consuming services, not parallel services).
-- **Time control** — sims may run faster than real-time or be paused/rewound. Keep this capability inside the simulation service; the gateway's real drone connections don't need it.
-- **Fan-out load** — a large simulated swarm is real load on the gateway and air traffic aggregator. Decide whether to rate-limit simulated traffic or route it through a separate gateway instance so it can't degrade real fleet connections.
-- **Command loopback** — commands sent to a simulated drone must be received and physically modeled by the simulation service (e.g. "go to waypoint" actually moves the simulated position), not just logged.
-- **Primary use case** (affects design): testing/QA (lightweight, disposable sims), operator training, or pre-flight mission validation (treating simulated drones as first-class fleet entries with saved history). Worth deciding which is primary.
+## API gateway / BFF
+
+Single entry point for the frontend, so the client isn't juggling direct connections to every piece:
+
+- REST/GraphQL CRUD requests → backend.
+- Websocket subscriptions (live position, live alerts) → live data layer.
+- Video stream negotiation → live data layer's video streaming service.
+
+## Command flow
+
+1. Client issues a command through the gateway.
+2. Gateway routes it to the live data layer's telemetry gateway, which sends it to the drone and streams back ack/nack.
+3. The telemetry gateway publishes a command event to pub/sub.
+4. The backend consumes that event and writes it to the audit trail / history store.
+
+The backend is never in the synchronous path of a live command — it only ever sees command and telemetry events asynchronously, after the fact, for persistence and reporting.
+
+## Why split this way at all
+
+The real-time layer's scaling axis (concurrent connections, fan-in from drones, fan-out to map-watching clients) is fundamentally different from the backend's (request volume). Keeping them as two deployables — rather than one, or ten — lets each scale and deploy on its own cadence without paying microservice-per-entity overhead for parts of the system that don't need it.
+
+## Open questions
+
+- **Sim identity tagging** — fleet registry needs a "simulated drone" flag so air traffic, alerts, and history can filter sim flights from real ones in the consuming logic, rather than standing up parallel services.
+- **Fan-out load** — a large simulated swarm is real load on the telemetry gateway and air traffic aggregator. Decide whether to rate-limit simulated traffic or route it through a separate gateway instance so it can't degrade real fleet connections.
+- **Command loopback** — commands sent to a simulated drone must be received and physically modeled by the simulation runner (e.g. "go to waypoint" actually moves the simulated position), not just logged.
+- **Primary use case for simulation** (affects design) — testing/QA (lightweight, disposable sims), operator training, or pre-flight mission validation (treating simulated drones as first-class fleet entries with saved history). Worth deciding which is primary.
+- **Pub/sub technology** — Redis streams, NATS, or Kafka for the backend ↔ live-data-layer event bus; pick based on required durability/replay for the audit trail vs. operational simplicity.

@@ -8,13 +8,12 @@ Project Raven provides the software layer for drone operators to track fleet sta
 
 Architecture
 
-Project Raven follows a microservice architecture, split by data ownership and update cadence into three layers:
+Project Raven is split into two deployables, not a sprawl of microservices:
 
-- Real-time layer — stateful, connection-oriented services: the telemetry gateway (drone connections, bidirectional command/telemetry), live air traffic (fused fleet-position view), and video streaming.
-- Domain services — request/response CRUD and business rules: mission planning, fleet registry, airspace rules, alerts, and simulation.
-- Platform layer — cross-cutting services used by everything above: identity & access, flight history & analytics, and command audit trail.
+- Backend — CRUD and business logic: mission planning, fleet registry, airspace rules, alert rules, identity & access, flight history & analytics, command audit trail, and simulation scenario CRUD. Persists to PostgreSQL through Prisma.
+- Live data layer — real-time comms: the telemetry gateway (drone connections, bidirectional command/telemetry), live air traffic (fused fleet-position view), video streaming, real-time alert evaluation, and simulation execution.
 
-A React + Vite client talks to the backend through an API gateway. Services communicate via request/response plus pub/sub for the telemetry stream, and persist state in PostgreSQL through Prisma. See ARCHITECTURE.md for the full breakdown and open design questions.
+A React + Vite client talks to both through a single API gateway: REST/GraphQL to the backend, websocket subscriptions and video negotiation to the live data layer. The backend and live data layer communicate over pub/sub rather than direct calls, so real-time traffic never sits in the backend's request path. See ARCHITECTURE.md for the full breakdown and open design questions.
 
 Tech Stack
 
@@ -24,10 +23,10 @@ Frontend
 - TypeScript — typed application code
 
 Backend
-- Node.js — runtime for the API gateway and services
+- Node.js — runtime for the API gateway, backend, and live data layer
 - Prisma — ORM / data-access and migration layer
 - Real-time transport — websocket/MQTT for the telemetry gateway; WebRTC/RTSP for video
-- Pub/sub — event stream fan-out between the telemetry gateway and its consumers (air traffic, alerts, history)
+- Pub/sub — event bus between the backend and the live data layer (telemetry, commands, alerts)
 
 Database
 - PostgreSQL — primary relational datastore
