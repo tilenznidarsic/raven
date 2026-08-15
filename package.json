@@ -3,8 +3,9 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
-    "dev:web": "nx serve @org/web",
-    "dev:api": "nx serve api"
+    "dev:web": "nx serve web",
+    "dev:api": "nx serve api",
+    "dev:all": "nx run-many -t serve"
   },
   "private": true,
   "engines": {
