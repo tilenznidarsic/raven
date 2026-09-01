@@ -1,7 +1,17 @@
+import PanelContainer from '../shared/components/PanelContainer';
+
 export default function ControlPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-950 text-slate-100">
-      <h1 className="text-4xl font-bold tracking-tight">Control</h1>
+    <div className="flex h-full w-full flex-col items-center justify-center gap-8 bg-gray-500 p-5">
+      <div className="grid h-full w-full grid-cols-4 grid-rows-2 gap-4">
+        <PanelContainer />
+        <PanelContainer cols={2} />
+        <PanelContainer />
+        <PanelContainer />
+        <PanelContainer />
+        <PanelContainer />
+        <PanelContainer />
+      </div>
     </div>
   );
 }
