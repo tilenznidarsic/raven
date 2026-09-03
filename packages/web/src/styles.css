@@ -1,5 +1,37 @@
 @import 'tailwindcss';
 
+@font-face {
+  font-family: 'Technology';
+  src: url('/fonts/technology/Technology.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Technology';
+  src: url('/fonts/technology/Technology-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Technology';
+  src: url('/fonts/technology/Technology-Italic.ttf') format('truetype');
+  font-weight: normal;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'Technology';
+  src: url('/fonts/technology/Technology-BoldItalic.ttf') format('truetype');
+  font-weight: bold;
+  font-style: italic;
+}
+
+@theme {
+  --font-technology: 'Technology', sans-serif;
+}
+
 html,
 body,
 #root {
