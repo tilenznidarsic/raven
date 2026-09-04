@@ -37,3 +37,27 @@ body,
 #root {
   height: 100%;
 }
+
+.waypoint-label {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  color: white;
+  font-weight: bold;
+  font-size: 0.9rem;
+  -webkit-text-stroke: 1px black;
+  text-shadow:
+    -1px -1px 0 black,
+    1px -1px 0 black,
+    -1px 1px 0 black,
+    1px 1px 0 black;
+}
+
+.waypoint-label::before {
+  display: none;
+}
+
+.dark-map .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(1.1);
+}
