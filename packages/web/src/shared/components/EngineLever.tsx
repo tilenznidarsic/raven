@@ -39,14 +39,14 @@ export default function EngineLever({ value, onChange }: Props) {
           </div>
         ))}
       </div>
-      <div ref={trackRef} className="relative h-full w-2 bg-gray-700">
+      <div ref={trackRef} className="relative h-full w-2 bg-black">
         <div
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           className="absolute left-1/2 flex h-9.5 w-21.5 cursor-grab touch-none items-center justify-center rounded-sm bg-orange-300"
           style={{ top: `${100 - value}%`, transform: 'translate(-50%, -50%)' }}
         >
-          <span className="text-sm font-bold text-black">{value}%</span>
+          <span className="text-sm font-bold text-black select-none">{value}%</span>
         </div>
       </div>
     </div>
